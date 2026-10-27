@@ -10,10 +10,13 @@
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px}
 body{padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
-.wrap{max-width:640px;margin:0 auto;padding:12px 12px 90px}
+.wrap{max-width:640px;margin:0 auto;padding:16px 14px 100px}
 h1{font-size:18px;margin:6px 0 10px}
-.hd{display:flex;justify-content:space-between;align-items:center}
-.tabs{display:flex;gap:8px;margin-bottom:10px}
+.hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px}
+.hd h1{margin:0}
+.hdb{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+#who{margin-top:6px;line-height:1.4;overflow-wrap:anywhere}
+.tabs{display:flex;gap:8px;margin-bottom:14px}
 .tabs button{flex:1;padding:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:10px;font-size:15px}
 .tabs button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
 input,select,textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);font:inherit;margin-bottom:8px}
@@ -31,12 +34,26 @@ textarea{min-height:70px}
 .modal.on{display:flex}
 .sheet{background:var(--bg);width:100%;max-width:640px;max-height:92%;overflow:auto;border-radius:16px 16px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom,0px))}
 .top{display:flex;gap:8px}.top input{margin:0}
-.stats{display:flex;gap:8px;margin-bottom:10px;overflow-x:auto}
-.stats div{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:8px 12px;white-space:nowrap}
+.stats{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.stats div{flex:1 1 90px;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:8px 12px;white-space:nowrap;text-align:center}
 .stats b{display:block;font-size:18px}
 .note{font-size:12px;color:var(--mu);margin:6px 0}
 .login{max-width:360px;margin:12vh auto;padding:0 16px}
 .err{color:var(--er);font-size:13px;margin:6px 0}
+@media (min-width:700px){
+  .wrap{max-width:880px;padding:24px 24px 110px}
+  h1{font-size:22px}
+  .modal{align-items:center}
+  .sheet{max-width:560px;border-radius:16px;max-height:90%}
+  .fab{right:32px;bottom:32px}
+}
+@media (min-width:1024px){
+  html,body{font-size:16px}
+  .wrap{max-width:1180px}
+  #list{display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:12px;align-items:start}
+  #list .card{margin-bottom:0}
+  .tabs button{max-width:260px}
+}
 </style>
 </head>
 <body>
@@ -52,6 +69,32 @@ function today(){return new Date(Date.now()-new Date().getTimezoneOffset()*60000
 function isDue(x){return x.follow_up&&x.follow_up<=today()&&x.status!=="Deal done"&&x.status!=="Not interested"}
 function stCls(s){return(s==="Deal done"||s==="Resolved")?"s-ok":(s==="Not interested"||s==="Open")?"s-er":"s-wa"}
 
+/* ---------- whatsapp reminders (sent to the user's own WhatsApp) ---------- */
+function getMyWa(){try{return localStorage.getItem("crm_wa")||""}catch(e){return""}}
+function setMyWa(){
+  var v=prompt("Enter your own WhatsApp number (10 digits, or with country code). Reminders will be sent to this number.",getMyWa());
+  if(v===null)return"";
+  var d=String(v).replace(/\D/g,"").replace(/^0+/,"");
+  if(d.length===10)d="91"+d;
+  if(d.length<11){alert("Please enter a valid number");return""}
+  try{localStorage.setItem("crm_wa",d)}catch(e){}
+  return d;
+}
+function myWa(){return getMyWa()||setMyWa()}
+function openWa(n,t){window.open("https://wa.me/"+n+"?text="+encodeURIComponent(t),"_blank")}
+function remind(x){
+  var n=myWa();if(!n)return;
+  openWa(n,"Follow-up reminder\nLead: "+(x.name||"No name")+"\nPhone: "+(x.phone||"-")+"\nDate: "+(x.follow_up||"-")+(x.notes?"\nNotes: "+x.notes:""));
+}
+function sendSummary(){
+  var n=myWa();if(!n)return;
+  var L=data.leads.filter(function(x){return(viewUid==="all"||x.owner_id===viewUid)&&isDue(x)}).sort(function(a,b){return a.follow_up<b.follow_up?-1:1});
+  if(!L.length){alert("No follow-ups due");return}
+  var t="Follow-ups due ("+L.length+")\n"+L.slice(0,15).map(function(x,i){return(i+1)+". "+(x.name||"No name")+" - "+(x.phone||"no phone")+" ("+x.follow_up+")"}).join("\n");
+  if(L.length>15)t+="\n+"+(L.length-15)+" more in the CRM";
+  openWa(n,t);
+}
+
 /* ---------- login ---------- */
 function showLogin(msg){
   $("app").innerHTML='<div class="login"><h1>My CRM</h1><input id="em" type="email" placeholder="Email" autocomplete="username"><input id="pw" type="password" placeholder="Password" autocomplete="current-password"><div class="err" id="er">'+esc(msg||"")+'</div><button class="btn p" id="go" style="width:100%;padding:12px">Sign in</button></div>';
@@ -64,13 +107,14 @@ function showLogin(msg){
 }
 async function start(u){
   me=u;
-  $("app").innerHTML='<div class="wrap"><div class="hd"><div><h1 style="margin-bottom:0">My CRM</h1><div class="mu" id="who"></div></div><button class="btn" id="out">Sign out</button></div>'+
+  $("app").innerHTML='<div class="wrap"><div class="hd"><div><h1 style="margin-bottom:0">My CRM</h1><div class="mu" id="who"></div></div><div class="hdb"><button class="btn" id="mywa">📲 My WhatsApp no.</button><button class="btn" id="out">Sign out</button></div></div>'+
   '<div class="tabs"><button id="t-leads" class="on">Leads</button><button id="t-comp">Complaints</button></div>'+
   '<div class="stats" id="stats"></div><div id="today"></div><div id="dist"></div><select id="mem" style="display:none"></select>'+
   '<div class="top"><input id="q" placeholder="Search name, phone, area…"><select id="f" style="width:130px;margin:0"></select></div>'+
   '<div style="height:10px"></div><div id="list"></div><div class="note" id="mode"></div></div>'+
   '<button class="fab" id="add">+ New</button><div class="modal" id="m"><div class="sheet" id="sheet"></div></div>';
   $("out").onclick=async function(){await sb.auth.signOut();showLogin()};
+  $("mywa").onclick=function(){setMyWa()};
   $("t-leads").onclick=function(){setTab("leads")};
   $("t-comp").onclick=function(){setTab("complaints")};
   $("add").onclick=function(){openForm()};
@@ -82,6 +126,7 @@ async function start(u){
     var t=e.target;
     if(t.dataset.e)openForm(data[tab].find(function(x){return x.id===t.dataset.e}));
     if(t.dataset.d)delItem(t.dataset.d);
+    if(t.dataset.r){var it=data[tab].find(function(x){return x.id===t.dataset.r});if(it)remind(it)}
   });
   await load();
 }
@@ -130,17 +175,21 @@ function render(){
   $("f").innerHTML='<option value="">All statuses</option>'+sts.map(function(s){return'<option'+(s===fv?" selected":"")+'>'+s+'</option>'}).join("");
   var base=data[tab].filter(function(x){return viewUid==="all"||x.owner_id===viewUid});
   $("stats").innerHTML='<div><b>'+base.length+'</b>Total</div>'+sts.map(function(s){return'<div><b>'+base.filter(function(x){return x.status===s}).length+'</b>'+s+'</div>'}).join("");
+  var dueN=data.leads.filter(function(x){return(viewUid==="all"||x.owner_id===viewUid)&&isDue(x)}).length;
+  var wb=(tab==="leads"&&dueN)?'<button class="btn" id="wasum" style="width:100%;margin-bottom:10px">📲 Send today’s follow-ups to my WhatsApp</button>':"";
   var td=today();
   if(tab==="leads"&&isAdmin){
     var rows=members.map(function(m){var L=data.leads.filter(function(x){return x.owner_id===m.id&&isDue(x)});return{m:m,t:L.filter(function(x){return x.follow_up===td}).length,o:L.filter(function(x){return x.follow_up<td}).length}}).filter(function(r){return r.t+r.o>0});
-    $("today").innerHTML='<div class="card"><b>📅 Team follow-ups (aaj)</b>'+(rows.length?rows.map(function(r){return'<div class="row" style="align-items:center;margin-top:8px"><div>'+esc(names[r.m.id])+'<div class="mu">Aaj: '+r.t+' · Pending: '+r.o+'</div></div><button class="btn" style="flex:0 0 auto" data-v="'+r.m.id+'">View</button></div>'}).join(""):'<div class="mu" style="margin-top:6px">Aaj kisi ka follow-up due nahi.</div>')+((viewUid!=="all"||dueOnly)?'<button class="btn" data-v="all" style="width:100%;margin-top:10px">Show all</button>':"")+'</div>';
+    $("today").innerHTML='<div class="card"><b>📅 Team follow-ups today</b>'+(rows.length?rows.map(function(r){return'<div class="row" style="align-items:center;margin-top:8px"><div>'+esc(names[r.m.id])+'<div class="mu">Today: '+r.t+' · Overdue: '+r.o+'</div></div><button class="btn" style="flex:0 0 auto" data-v="'+r.m.id+'">View</button></div>'}).join(""):'<div class="mu" style="margin-top:6px">No follow-ups due today.</div>')+((viewUid!=="all"||dueOnly)?'<button class="btn" data-v="all" style="width:100%;margin-top:10px">Show all</button>':"")+'</div>'+wb;
   }else{
     var nd=data.leads.filter(function(x){return(viewUid==="all"||x.owner_id===viewUid)&&isDue(x)}).length;
-    $("today").innerHTML=(tab==="leads"&&nd)?'<button class="btn p" id="dueb" style="width:100%;margin-bottom:10px">⏰ Follow-ups due: '+nd+(dueOnly?' (show all)':' (view)')+'</button>':"";
+    $("today").innerHTML=((tab==="leads"&&nd)?'<button class="btn p" id="dueb" style="width:100%;margin-bottom:10px">⏰ Follow-ups due: '+nd+(dueOnly?' (show all)':' (view)')+'</button>':"")+wb;
     if($("dueb"))$("dueb").onclick=function(){dueOnly=!dueOnly;render()};
   }
-  $("dist").innerHTML=(isAdmin&&tab==="leads")?'<button class="btn" id="distb" style="width:100%;margin-bottom:10px">📤 Distribute leads to team</button>':"";
+  if($("wasum"))$("wasum").onclick=sendSummary;
+  $("dist").innerHTML=isAdmin?'<div class="row" style="margin-bottom:10px">'+(tab==="leads"?'<button class="btn" id="distb">📤 Distribute leads</button>':"")+'<button class="btn" id="teamb">👥 Team</button></div>':"";
   if($("distb"))$("distb").onclick=openDist;
+  if($("teamb"))$("teamb").onclick=openTeam;
   var q=$("q").value.toLowerCase();
   arr=arr.filter(function(x){return(!fv||x.status===fv)&&(!q||JSON.stringify(x).toLowerCase().indexOf(q)>-1)});
   if(!arr.length){$("list").innerHTML='<div class="card mu">Nothing here yet. Tap "+ New"'+(tab==="leads"?" or import a CSV.":".")+'</div>';return}
@@ -151,7 +200,7 @@ function render(){
       if(x.follow_up)h+='<div class="mu">Follow-up: '+esc(x.follow_up)+'</div>';
     }else h+='<div class="mu">'+(x.phone?'📞 '+esc(x.phone)+' · ':"")+esc(x.complaint_date||"")+'</div><div>'+esc(x.issue||"")+'</div>';
     if(x.notes)h+='<div class="mu">📝 '+esc(x.notes)+'</div>';
-    h+='<div class="act">'+(x.phone?'<a class="btn" href="tel:'+esc(x.phone)+'">Call</a><a class="btn" target="_blank" rel="noopener" href="'+waUrl(x)+'">WhatsApp</a>':"")+calLink(x)+'<button class="btn" data-e="'+x.id+'">Edit</button><button class="btn" data-d="'+x.id+'">Delete</button></div></div>';
+    h+='<div class="act">'+(x.phone?'<a class="btn" href="tel:'+esc(x.phone)+'">Call</a><a class="btn" target="_blank" rel="noopener" href="'+waUrl(x)+'">WhatsApp</a>':"")+calLink(x)+(x.follow_up?'<button class="btn" data-r="'+x.id+'">📲 Remind me</button>':"")+'<button class="btn" data-e="'+x.id+'">Edit</button><button class="btn" data-d="'+x.id+'">Delete</button></div></div>';
     return h;
   }).join("");
 }
@@ -244,6 +293,25 @@ async function doDist(){
     if(r.error){alert(r.error.message);break}
   }
   closeForm();await load();alert(tot+" leads sent.");
+}
+
+/* ---------- team (admin) ---------- */
+function genPw(){var c="abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789",a=new Uint32Array(10),o="";crypto.getRandomValues(a);for(var i=0;i<a.length;i++)o+=c[a[i]%c.length];return o}
+function openTeam(){
+  var h='<h1>Team</h1><div class="note">Passwords are stored encrypted and cannot be viewed. If someone forgets theirs, set a new one here and tell them.</div>';
+  members.forEach(function(m){h+='<div class="card"><b>'+esc(names[m.id])+'</b> <span class="tag">'+esc(m.role||"employee")+'</span><div class="mu">'+esc(m.email||"")+'</div><div class="act"><button class="btn" data-p="'+esc(m.email||"")+'">Set new password</button></div></div>'});
+  h+='<button class="btn" id="tc" style="width:100%">Close</button>';
+  $("sheet").innerHTML=h;$("m").classList.add("on");
+  $("tc").onclick=closeForm;
+  $("sheet").onclick=async function(e){
+    var em=e.target.dataset.p;if(!em)return;
+    var pw=prompt("New password for "+em+" (minimum 8 characters). You can keep this suggested one or type your own:",genPw());if(!pw)return;
+    var r=await sb.rpc("admin_set_password",{target_email:em,new_password:pw});
+    if(r.error){alert(r.error.message);return}
+    var info="Email: "+em+"\nPassword: "+pw;
+    try{await navigator.clipboard.writeText(info)}catch(x){}
+    alert("Password updated.\n\n"+info+"\n\n(Copied to clipboard. Share it with the employee.)");
+  };
 }
 
 /* ---------- boot ---------- */
