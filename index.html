@@ -68,7 +68,7 @@ textarea{min-height:70px}
 <script>
 var sb=supabase.createClient("https://smxjcandsguqnkfdevxt.supabase.co","sb_publishable_Trk5PF7L7DM_bpgFXCLlLg_xE-h_VSN");
 var LS=["New","Contacted","Interested","Deal done","Not interested"],CS=["Open","In progress","Resolved"];
-var tab="leads",data={leads:[],complaints:[]},me=null,members=[],names={},isAdmin=false,viewUid="all",dueOnly=false,editing=null;
+var nameAsked=false,tab="leads",data={leads:[],complaints:[]},me=null,members=[],names={},isAdmin=false,viewUid="all",dueOnly=false,editing=null;
 var $=function(i){return document.getElementById(i)};
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function today(){return new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)}
@@ -150,6 +150,7 @@ async function load(){
   var mine=members.find(function(m){return m.id===me.id});
   isAdmin=!!(mine&&mine.role==="admin");
   $("who").textContent="👤 "+(names[me.id]||me.email)+" ("+(isAdmin?"Admin":"Employee")+")";
+  if(mine&&!mine.full_name&&!nameAsked)askName();
   var s=$("mem");
   if(isAdmin){s.style.display="block";s.innerHTML='<option value="all">All members</option>'+members.map(function(m){return'<option value="'+m.id+'"'+(m.id===viewUid?" selected":"")+'>'+esc(names[m.id])+'</option>'}).join("")}
   $("mode").textContent=isAdmin?"Admin view: you can see all members’ data.":"This is your own panel.";
@@ -301,31 +302,99 @@ async function doDist(){
   closeForm();await load();alert(tot+" leads sent.");
 }
 
+/* ---------- first login: ask for name ---------- */
+function askName(){
+  nameAsked=true;
+  $("sheet").innerHTML='<h1>Welcome 👋</h1><div class="mu" style="margin-bottom:12px">Please enter your full name. It will be shown on your panel.</div><input id="nm" placeholder="Your full name" autocomplete="name"><button class="btn p" id="nmsave" style="width:100%">Save</button><div class="err" id="nmer"></div>';
+  $("m").classList.add("on");
+  $("nmsave").onclick=async function(){
+    var v=$("nm").value.trim();
+    if(v.length<2){$("nmer").textContent="Please enter your name";return}
+    $("nmsave").disabled=true;
+    var r=await sb.rpc("set_my_name",{new_name:v});
+    if(r.error){$("nmer").textContent=r.error.message;$("nmsave").disabled=false;return}
+    closeForm();await load();
+  };
+}
+
+/* ---------- transfer data between employees (admin) ---------- */
+function openTransfer(fromId){
+  var others=members.filter(function(m){return m.id!==fromId});
+  if(!others.length){alert("No other team member to transfer to");return}
+  var h='<h1>Transfer data</h1><div class="note">Move all leads and complaints of '+esc(names[fromId])+' to another team member.</div><select id="tt">'+others.map(function(m){return'<option value="'+m.id+'">'+esc(names[m.id])+'</option>'}).join("")+'</select><div class="row"><button class="btn p" id="tgo">Transfer</button><button class="btn" id="tx">Cancel</button></div>';
+  $("sheet").innerHTML=h;$("m").classList.add("on");
+  $("tx").onclick=openTeam;
+  $("tgo").onclick=async function(){
+    var to=$("tt").value;
+    if(!confirm("Move all data from "+names[fromId]+" to "+names[to]+"?"))return;
+    $("tgo").disabled=true;
+    var a=await sb.from("leads").update({owner_id:to}).eq("owner_id",fromId);
+    var b=await sb.from("complaints").update({owner_id:to}).eq("owner_id",fromId);
+    if(a.error||b.error){alert((a.error||b.error).message);$("tgo").disabled=false;return}
+    await load();alert("Transfer complete.");openTeam();
+  };
+}
+
 /* ---------- team (admin) ---------- */
 function genPw(){var c="abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789",a=new Uint32Array(10),o="";crypto.getRandomValues(a);for(var i=0;i<a.length;i++)o+=c[a[i]%c.length];return o}
-function openTeam(){
-  var h='<h1>Team</h1><div class="note">Passwords are stored encrypted and cannot be viewed. If someone forgets theirs, set a new one here and tell them.</div>';
-  members.forEach(function(m){h+='<div class="card"><b>'+esc(names[m.id])+'</b> <span class="tag">'+esc(m.role||"employee")+'</span><div class="mu">'+esc(m.email||"")+'</div><div class="act"><button class="btn" data-n="'+m.id+'">Edit name</button><button class="btn" data-p="'+esc(m.email||"")+'">Set new password</button></div></div>'});
+function openAdd(){
+  var h='<h1>Add employee</h1><input id="an" placeholder="Full name" autocomplete="off"><input id="ae" type="email" placeholder="Email (this is the login ID)" autocapitalize="none" autocomplete="off"><input id="ap" placeholder="Password" value="'+genPw()+'" autocomplete="off"><div class="note">A password is suggested automatically. You can change it. Share it with the employee after creating.</div><div class="err" id="aer"></div><div class="row"><button class="btn p" id="ago">Create</button><button class="btn" id="ax">Cancel</button></div>';
+  $("sheet").innerHTML=h;$("m").classList.add("on");
+  $("ax").onclick=openTeam;
+  $("ago").onclick=async function(){
+    var n=$("an").value.trim(),e=$("ae").value.trim(),p=$("ap").value;
+    if(n.length<2){$("aer").textContent="Enter the employee's name";return}
+    if(!e){$("aer").textContent="Enter an email";return}
+    if(p.length<8){$("aer").textContent="Password must be at least 8 characters";return}
+    $("ago").disabled=true;
+    var r=await sb.rpc("admin_create_user",{new_email:e,new_password:p,new_name:n});
+    if(r.error){$("aer").textContent=r.error.message;$("ago").disabled=false;return}
+    var info="Name: "+n+"\nEmail: "+e.toLowerCase()+"\nPassword: "+p+"\nLogin: "+location.origin+location.pathname;
+    try{await navigator.clipboard.writeText(info)}catch(x){}
+    await load();
+    alert("Employee created.\n\n"+info+"\n\n(Copied to clipboard. Share it with the employee.)");
+    openTeam();
+  };
+}
+async function openTeam(){
+  var st={};
+  try{var sr=await sb.rpc("admin_user_status");if(!sr.error)(sr.data||[]).forEach(function(u){st[u.id]=u.active})}catch(x){}
+  var h='<h1>Team</h1><button class="btn p" id="addb" style="width:100%;margin-bottom:10px">➕ Add employee</button><div class="note">Passwords are stored encrypted and cannot be viewed. If someone forgets theirs, set a new one here and tell them.</div>';
+  members.forEach(function(m){
+    var off=st[m.id]===false;
+    h+='<div class="card"><b>'+esc(names[m.id])+'</b> <span class="tag">'+esc(m.role||"employee")+'</span>'+(off?'<span class="tag s-er">Deactivated</span>':"")+'<div class="mu">'+esc(m.email||"")+'</div><div class="act"><button class="btn" data-n="'+m.id+'">Edit name</button><button class="btn" data-t="'+m.id+'">Transfer data</button><button class="btn" data-p="'+esc(m.email||"")+'">Set new password</button>'+(m.id!==me.id?'<button class="btn" data-a="'+m.id+'" data-s="'+(off?"on":"off")+'">'+(off?"Activate":"Deactivate")+'</button>':"")+'</div></div>';
+  });
   h+='<button class="btn" id="tc" style="width:100%">Close</button>';
   $("sheet").innerHTML=h;$("m").classList.add("on");
   $("tc").onclick=closeForm;
+  $("addb").onclick=openAdd;
   $("sheet").onclick=async function(e){
-    var nid=e.target.dataset.n;
-    if(nid){
-      var cur=names[nid]||"";
+    var d=e.target.dataset;
+    if(d.t){openTransfer(d.t);return}
+    if(d.a){
+      var on=d.s==="on";
+      if(!confirm((on?"Activate ":"Deactivate ")+names[d.a]+"?"))return;
+      var ar=await sb.rpc("admin_set_active",{target_id:d.a,active:on});
+      if(ar.error){alert(ar.error.message);return}
+      openTeam();return;
+    }
+    if(d.n){
+      var cur=names[d.n]||"";
       var nm=prompt("Employee name",cur.indexOf("@")<0?cur:"");
       if(!nm||!nm.trim())return;
-      var rr=await sb.rpc("admin_set_name",{target_id:nid,new_name:nm});
+      var rr=await sb.rpc("admin_set_name",{target_id:d.n,new_name:nm});
       if(rr.error){alert(rr.error.message);return}
       await load();openTeam();return;
     }
-    var em=e.target.dataset.p;if(!em)return;
-    var pw=prompt("New password for "+em+" (minimum 8 characters). You can keep this suggested one or type your own:",genPw());if(!pw)return;
-    var r=await sb.rpc("admin_set_password",{target_email:em,new_password:pw});
-    if(r.error){alert(r.error.message);return}
-    var info="Email: "+em+"\nPassword: "+pw;
-    try{await navigator.clipboard.writeText(info)}catch(x){}
-    alert("Password updated.\n\n"+info+"\n\n(Copied to clipboard. Share it with the employee.)");
+    if(d.p){
+      var em=d.p;
+      var pw=prompt("New password for "+em+" (minimum 8 characters). You can keep this suggested one or type your own:",genPw());if(!pw)return;
+      var r=await sb.rpc("admin_set_password",{target_email:em,new_password:pw});
+      if(r.error){alert(r.error.message);return}
+      var info="Email: "+em+"\nPassword: "+pw;
+      try{await navigator.clipboard.writeText(info)}catch(x){}
+      alert("Password updated.\n\n"+info+"\n\n(Copied to clipboard. Share it with the employee.)");
+    }
   };
 }
 
