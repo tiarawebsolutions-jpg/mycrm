@@ -64,7 +64,7 @@ function showLogin(msg){
 }
 async function start(u){
   me=u;
-  $("app").innerHTML='<div class="wrap"><div class="hd"><h1>My CRM</h1><button class="btn" id="out">Sign out</button></div>'+
+  $("app").innerHTML='<div class="wrap"><div class="hd"><div><h1 style="margin-bottom:0">My CRM</h1><div class="mu" id="who"></div></div><button class="btn" id="out">Sign out</button></div>'+
   '<div class="tabs"><button id="t-leads" class="on">Leads</button><button id="t-comp">Complaints</button></div>'+
   '<div class="stats" id="stats"></div><div id="today"></div><div id="dist"></div><select id="mem" style="display:none"></select>'+
   '<div class="top"><input id="q" placeholder="Search name, phone, area…"><select id="f" style="width:130px;margin:0"></select></div>'+
@@ -76,6 +76,7 @@ async function start(u){
   $("add").onclick=function(){openForm()};
   $("q").oninput=render;$("f").onchange=render;
   $("mem").onchange=function(){viewUid=this.value;render()};
+  $("today").addEventListener("click",function(e){var v=e.target.dataset.v;if(v){viewUid=v;dueOnly=(v!=="all");if($("mem"))$("mem").value=v;render()}});
   $("m").addEventListener("click",function(e){if(e.target===$("m"))closeForm()});
   $("list").addEventListener("click",function(e){
     var t=e.target;
@@ -97,6 +98,7 @@ async function load(){
   members.forEach(function(m){names[m.id]=m.full_name||m.email||"Member"});
   var mine=members.find(function(m){return m.id===me.id});
   isAdmin=!!(mine&&mine.role==="admin");
+  $("who").textContent="👤 "+(names[me.id]||me.email)+" · "+(isAdmin?"Admin":"Employee");
   var s=$("mem");
   if(isAdmin){s.style.display="block";s.innerHTML='<option value="all">All members</option>'+members.map(function(m){return'<option value="'+m.id+'"'+(m.id===viewUid?" selected":"")+'>'+esc(names[m.id])+'</option>'}).join("")}
   $("mode").textContent=isAdmin?"Admin view: you can see all members’ data.":"This is your own panel.";
@@ -117,9 +119,8 @@ function waUrl(x){
 }
 function calLink(x){
   if(tab!=="leads"||!x.follow_up)return"";
-  var a=x.follow_up.replace(/-/g,""),n=new Date(x.follow_up+"T00:00:00");n.setDate(n.getDate()+1);
-  var b=n.getFullYear()+("0"+(n.getMonth()+1)).slice(-2)+("0"+n.getDate()).slice(-2);
-  return'<a class="btn" target="_blank" rel="noopener" href="https://calendar.google.com/calendar/render?action=TEMPLATE&amp;text='+encodeURIComponent("Follow-up: "+(x.name||""))+"&amp;dates="+a+"/"+b+"&amp;details="+encodeURIComponent("Phone: "+(x.phone||""))+'">📅 Reminder</a>';
+  var a=x.follow_up.replace(/-/g,"");
+  return'<a class="btn" target="_blank" rel="noopener" href="https://calendar.google.com/calendar/render?action=TEMPLATE&amp;text='+encodeURIComponent("Follow-up: "+(x.name||""))+"&amp;dates="+a+"T100000/"+a+"T103000&amp;details="+encodeURIComponent("Phone: "+(x.phone||"")+"\n"+(x.notes||""))+'">⏰ Reminder</a>';
 }
 function render(){
   if(!$("list"))return;
@@ -129,9 +130,15 @@ function render(){
   $("f").innerHTML='<option value="">All statuses</option>'+sts.map(function(s){return'<option'+(s===fv?" selected":"")+'>'+s+'</option>'}).join("");
   var base=data[tab].filter(function(x){return viewUid==="all"||x.owner_id===viewUid});
   $("stats").innerHTML='<div><b>'+base.length+'</b>Total</div>'+sts.map(function(s){return'<div><b>'+base.filter(function(x){return x.status===s}).length+'</b>'+s+'</div>'}).join("");
-  var nd=data.leads.filter(function(x){return(viewUid==="all"||x.owner_id===viewUid)&&isDue(x)}).length;
-  $("today").innerHTML=(tab==="leads"&&nd)?'<button class="btn p" id="dueb" style="width:100%;margin-bottom:10px">⏰ Follow-ups due: '+nd+(dueOnly?' (show all)':' (view)')+'</button>':"";
-  if($("dueb"))$("dueb").onclick=function(){dueOnly=!dueOnly;render()};
+  var td=today();
+  if(tab==="leads"&&isAdmin){
+    var rows=members.map(function(m){var L=data.leads.filter(function(x){return x.owner_id===m.id&&isDue(x)});return{m:m,t:L.filter(function(x){return x.follow_up===td}).length,o:L.filter(function(x){return x.follow_up<td}).length}}).filter(function(r){return r.t+r.o>0});
+    $("today").innerHTML='<div class="card"><b>📅 Team follow-ups (aaj)</b>'+(rows.length?rows.map(function(r){return'<div class="row" style="align-items:center;margin-top:8px"><div>'+esc(names[r.m.id])+'<div class="mu">Aaj: '+r.t+' · Pending: '+r.o+'</div></div><button class="btn" style="flex:0 0 auto" data-v="'+r.m.id+'">View</button></div>'}).join(""):'<div class="mu" style="margin-top:6px">Aaj kisi ka follow-up due nahi.</div>')+((viewUid!=="all"||dueOnly)?'<button class="btn" data-v="all" style="width:100%;margin-top:10px">Show all</button>':"")+'</div>';
+  }else{
+    var nd=data.leads.filter(function(x){return(viewUid==="all"||x.owner_id===viewUid)&&isDue(x)}).length;
+    $("today").innerHTML=(tab==="leads"&&nd)?'<button class="btn p" id="dueb" style="width:100%;margin-bottom:10px">⏰ Follow-ups due: '+nd+(dueOnly?' (show all)':' (view)')+'</button>':"";
+    if($("dueb"))$("dueb").onclick=function(){dueOnly=!dueOnly;render()};
+  }
   $("dist").innerHTML=(isAdmin&&tab==="leads")?'<button class="btn" id="distb" style="width:100%;margin-bottom:10px">📤 Distribute leads to team</button>':"";
   if($("distb"))$("distb").onclick=openDist;
   var q=$("q").value.toLowerCase();
@@ -162,7 +169,7 @@ function openForm(x){
     h+='<textarea id="f_issue" placeholder="What is the complaint?">'+esc(x.issue)+'</textarea><input id="f_date" type="date" value="'+esc(x.complaint_date||today())+'"><select id="f_status">'+opts(CS,x.status)+'</select>';
   }
   h+='<textarea id="f_notes" placeholder="Notes">'+esc(x.notes)+'</textarea><div class="row"><button class="btn p" id="save">Save</button><button class="btn" id="cancel">Cancel</button></div>';
-  if(tab==="leads"&&!x.id)h+='<hr style="border:0;border-top:1px solid var(--bd);margin:14px 0"><b>Import Outscraper CSV</b><div class="note">Choose the CSV file. Name, address, phone and website are added automatically.</div><input id="csv" type="file" accept=".csv,text/csv">';
+  if(tab==="leads"&&!x.id&&isAdmin)h+='<hr style="border:0;border-top:1px solid var(--bd);margin:14px 0"><b>Import Outscraper CSV</b><div class="note">Choose the CSV file. Name, address, phone and website are added automatically.</div><input id="csv" type="file" accept=".csv,text/csv">';
   $("sheet").innerHTML=h;$("m").classList.add("on");
   $("cancel").onclick=closeForm;
   $("save").onclick=saveForm;
