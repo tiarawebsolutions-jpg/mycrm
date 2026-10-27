@@ -68,7 +68,7 @@ textarea{min-height:70px}
 <script>
 var sb=supabase.createClient("https://smxjcandsguqnkfdevxt.supabase.co","sb_publishable_Trk5PF7L7DM_bpgFXCLlLg_xE-h_VSN");
 var LS=["New","Contacted","Interested","Deal done","Not interested"],CS=["Open","In progress","Resolved"];
-var nameAsked=false,tab="leads",data={leads:[],complaints:[]},me=null,members=[],names={},isAdmin=false,viewUid="all",dueOnly=false,editing=null;
+var nameAsked=false,nameRequired=false,tab="leads",data={leads:[],complaints:[]},me=null,members=[],names={},isAdmin=false,viewUid="all",dueOnly=false,editing=null;
 var $=function(i){return document.getElementById(i)};
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function today(){return new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)}
@@ -127,7 +127,13 @@ async function start(u){
   $("q").oninput=render;$("f").onchange=render;
   $("mem").onchange=function(){viewUid=this.value;render()};
   $("today").addEventListener("click",function(e){var v=e.target.dataset.v;if(v){viewUid=v;dueOnly=(v!=="all");if($("mem"))$("mem").value=v;render()}});
-  $("m").addEventListener("click",function(e){if(e.target===$("m"))closeForm()});
+  $("m").addEventListener("click",function(e){
+    /* First-login name is mandatory: do not dismiss the welcome modal by tapping outside. */
+    if(e.target===$("m")){
+      if(nameRequired){e.preventDefault();e.stopPropagation();return;}
+      closeForm();
+    }
+  });
   $("list").addEventListener("click",function(e){
     var t=e.target;
     if(t.dataset.e)openForm(data[tab].find(function(x){return x.id===t.dataset.e}));
@@ -231,7 +237,7 @@ function openForm(x){
   $("save").onclick=saveForm;
   if($("csv"))$("csv").onchange=importCsv;
 }
-function closeForm(){$("m").classList.remove("on")}
+function closeForm(){if(nameRequired){$("m").classList.add("on");return;}$("m").classList.remove("on")}
 async function saveForm(){
   var g=function(i){var e=$(i);return e?e.value.trim():undefined};
   var o={name:g("f_name"),phone:g("f_phone"),status:g("f_status"),notes:g("f_notes")};
@@ -305,6 +311,7 @@ async function doDist(){
 /* ---------- first login: ask for name ---------- */
 function askName(){
   nameAsked=true;
+  nameRequired=true;
   $("sheet").innerHTML='<h1>Welcome 👋</h1><div class="mu" style="margin-bottom:12px">Please enter your full name. It will be shown on your panel.</div><input id="nm" placeholder="Your full name" autocomplete="name"><button class="btn p" id="nmsave" style="width:100%">Save</button><div class="err" id="nmer"></div>';
   $("m").classList.add("on");
   $("nmsave").onclick=async function(){
@@ -313,6 +320,7 @@ function askName(){
     $("nmsave").disabled=true;
     var r=await sb.rpc("set_my_name",{new_name:v});
     if(r.error){$("nmer").textContent=r.error.message;$("nmsave").disabled=false;return}
+    nameRequired=false;
     closeForm();await load();
   };
 }
