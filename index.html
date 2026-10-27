@@ -68,12 +68,26 @@ textarea{min-height:70px}
 <script>
 var sb=supabase.createClient("https://smxjcandsguqnkfdevxt.supabase.co","sb_publishable_Trk5PF7L7DM_bpgFXCLlLg_xE-h_VSN");
 var LS=["New","Contacted","Interested","Deal done","Not interested"],CS=["Open","In progress","Resolved"];
-var nameAsked=false,tab="leads",data={leads:[],complaints:[]},me=null,members=[],names={},isAdmin=false,viewUid="all",dueOnly=false,editing=null;
+var lim=100,nameAsked=false,tab="leads",data={leads:[],complaints:[]},me=null,members=[],names={},isAdmin=false,viewUid="all",dueOnly=false,editing=null;
 var $=function(i){return document.getElementById(i)};
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function today(){return new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)}
 function isDue(x){return x.follow_up&&x.follow_up<=today()&&x.status!=="Deal done"&&x.status!=="Not interested"}
 function stCls(s){return(s==="Deal done"||s==="Resolved")?"s-ok":(s==="Not interested"||s==="Open")?"s-er":"s-wa"}
+
+function normPhone(s){var d=String(s==null?"":s).replace(/\D/g,"").replace(/^0+/,"");if(d.length===12&&d.slice(0,2)==="91")d=d.slice(2);return d}
+function leadKey(x){var p=normPhone(x.phone);return p?"p"+p:"n"+String(x.name||"").toLowerCase()+"|"+String(x.address||"").toLowerCase()}
+async function fetchAll(t){
+  var out=[],from=0,step=1000;
+  while(true){
+    var r=await sb.from(t).select("*").order("created_at",{ascending:false}).order("id",{ascending:true}).range(from,from+step-1);
+    if(r.error)return{data:null,error:r.error};
+    out=out.concat(r.data||[]);
+    if(!r.data||r.data.length<step)break;
+    from+=step;
+  }
+  return{data:out,error:null};
+}
 
 /* ---------- whatsapp reminders (sent to the user's own WhatsApp) ---------- */
 function getMyWa(){try{return localStorage.getItem("crm_wa")||""}catch(e){return""}}
@@ -111,7 +125,17 @@ function showLogin(msg){
     start(r.data.user);
   };
 }
+function deviceId(){
+  try{var d=localStorage.getItem("crm_dev");if(!d){d=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(36).slice(2));localStorage.setItem("crm_dev",d)}return d}catch(e){return"nostorage"}
+}
+async function deviceOk(){
+  var r=await sb.rpc("claim_device",{dev:deviceId(),label:(navigator.userAgent||"").slice(0,120)});
+  if(r.error){return{ok:false,msg:"Device check failed: "+r.error.message}}
+  return r.data===true?{ok:true}:{ok:false,msg:"This account is already registered on another device. Ask your admin to reset your device."};
+}
 async function start(u){
+  var dv=await deviceOk();
+  if(!dv.ok){await sb.auth.signOut();viewUid="all";me=null;showLogin(dv.msg);return}
   me=u;
   $("app").innerHTML='<div class="wrap"><div class="hd"><div style="display:flex;align-items:center;gap:10px"><img id="myavatar" alt="Profile" style="display:none;width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--bd)"><div><h1 style="margin-bottom:0">My CRM</h1><div class="mu" id="who"></div></div></div><div class="hdb"><button class="btn" id="mywa">📲 My WhatsApp no.</button><button class="btn" id="out">Sign out</button></div></div>'+
   '<div class="tabs"><button id="t-leads" class="on">Leads</button><button id="t-comp">Complaints</button></div>'+
@@ -119,14 +143,14 @@ async function start(u){
   '<div class="top"><input id="q" placeholder="Search name, phone, area…"><select id="f" style="width:130px;margin:0"></select></div>'+
   '<div style="height:10px"></div><div id="list"></div><div class="note" id="mode"></div></div>'+
   '<button class="fab" id="add">+ New</button><div class="modal" id="m"><div class="sheet" id="sheet"></div></div>';
-  $("out").onclick=async function(){await sb.auth.signOut();showLogin()};
+  $("out").onclick=async function(){await sb.auth.signOut();viewUid="all";dueOnly=false;tab="leads";lim=100;nameAsked=false;isAdmin=false;me=null;data={leads:[],complaints:[]};showLogin()};
   $("mywa").onclick=function(){setMyWa()};
   $("t-leads").onclick=function(){setTab("leads")};
   $("t-comp").onclick=function(){setTab("complaints")};
   $("add").onclick=function(){openForm()};
-  $("q").oninput=render;$("f").onchange=render;
-  $("mem").onchange=function(){viewUid=this.value;render()};
-  $("today").addEventListener("click",function(e){var v=e.target.dataset.v;if(v){viewUid=v;dueOnly=(v!=="all");if($("mem"))$("mem").value=v;render()}});
+  $("q").oninput=function(){lim=100;render()};$("f").onchange=function(){lim=100;render()};
+  $("mem").onchange=function(){viewUid=this.value;lim=100;render()};
+  $("today").addEventListener("click",function(e){var v=e.target.dataset.v;if(v){lim=100;viewUid=v;dueOnly=(v!=="all");if($("mem"))$("mem").value=v;render()}});
   $("m").addEventListener("click",function(e){if(e.target===$("m"))closeForm()});
   $("list").addEventListener("click",function(e){
     var t=e.target;
@@ -137,13 +161,13 @@ async function start(u){
   });
   await load();
 }
-function setTab(t){tab=t;$("f").value="";$("q").value="";$("t-leads").className=t==="leads"?"on":"";$("t-comp").className=t==="complaints"?"on":"";render()}
+function setTab(t){tab=t;lim=100;$("f").value="";$("q").value="";$("t-leads").className=t==="leads"?"on":"";$("t-comp").className=t==="complaints"?"on":"";render()}
 
 /* ---------- data ---------- */
 async function load(){
   var r=await Promise.all([
-    sb.from("leads").select("*").order("created_at",{ascending:false}),
-    sb.from("complaints").select("*").order("created_at",{ascending:false}),
+    fetchAll("leads"),
+    fetchAll("complaints"),
     sb.from("profiles").select("*")]);
   if(r[0].error){alert("Could not load data: "+r[0].error.message);return}
   data.leads=r[0].data||[];data.complaints=r[1].data||[];members=r[2].data||[];
@@ -201,6 +225,7 @@ function render(){
   if($("teamb"))$("teamb").onclick=openTeam;
   var q=$("q").value.toLowerCase();
   arr=arr.filter(function(x){return(!fv||x.status===fv)&&(!q||JSON.stringify(x).toLowerCase().indexOf(q)>-1)});
+  var totalN=arr.length;arr=arr.slice(0,lim);
   if(!arr.length){$("list").innerHTML='<div class="card mu">Nothing here yet. Tap "+ New"'+(tab==="leads"?" or import a CSV.":".")+'</div>';return}
   $("list").innerHTML=arr.map(function(x){
     var h='<div class="card"><b>'+esc(x.name||"(no name)")+'</b> '+(isAdmin?'<span class="tag">👤 '+esc(names[x.owner_id]||"Member")+'</span>':"")+'<span class="tag '+stCls(x.status)+'">'+esc(x.status)+'</span>';
@@ -211,7 +236,8 @@ function render(){
     if(x.notes)h+='<div class="mu">📝 '+esc(x.notes)+'</div>';
     h+='<div class="act">'+(x.phone?'<a class="btn" data-lg="Call" data-i="'+x.id+'" href="tel:'+esc(x.phone)+'">Call</a><a class="btn" data-lg="WhatsApp" data-i="'+x.id+'" target="_blank" rel="noopener" href="'+waUrl(x)+'">WhatsApp</a>':"")+calLink(x)+(x.follow_up?'<button class="btn" data-r="'+x.id+'">📲 Remind me</button>':"")+'<button class="btn" data-e="'+x.id+'">Edit</button><button class="btn" data-d="'+x.id+'">Delete</button></div></div>';
     return h;
-  }).join("");
+  }).join("")+(totalN>arr.length?'<button class="btn" id="more" style="grid-column:1/-1;width:100%">Show more ('+(totalN-arr.length)+' left)</button>':"");
+  if($("more"))$("more").onclick=function(){lim+=100;render()};
 }
 
 /* ---------- form ---------- */
@@ -245,9 +271,10 @@ async function saveForm(){
     if(miss.length){alert("Required: "+miss.join(", "));return}}
   else{o.issue=g("f_issue");o.complaint_date=g("f_date")||null}
   $("save").disabled=true;
-  var r=editing.id?await sb.from(tab).update(o).eq("id",editing.id):await sb.from(tab).insert(o);
+  var r=editing.id?await sb.from(tab).update(o).eq("id",editing.id):await sb.from(tab).insert(o).select("id").single();
   if(r.error){alert(r.error.message);$("save").disabled=false;return}
-  if(talk||(editing.id&&o.status!==was))await logAct({id:editing.id,name:o.name,phone:o.phone},talk?"Talk":"Status change",talk,o.status);
+  var iid=editing.id||(r.data&&r.data.id);
+  if(talk||(editing.id&&o.status!==was))await logAct({id:iid,name:o.name,phone:o.phone},talk?"Talk":"Status change",talk,o.status);
   closeForm();await load();
 }
 async function logAct(it,kind,note,status){
@@ -290,21 +317,21 @@ function parseCsv(t){
 }
 async function importCsv(ev){
   var file=ev.target.files[0];if(!file)return;
-  var rows=parseCsv(await file.text());
+  var rows=parseCsv((await file.text()).replace(/^\uFEFF/,""));
   if(rows.length<2){alert("The CSV looks empty");return}
   var hd=rows[0].map(function(h){return h.trim().toLowerCase()});
   var ix=function(n){for(var k=0;k<n.length;k++){var j=hd.indexOf(n[k]);if(j>-1)return j}return -1};
   var cn=ix(["name"]),ca=ix(["full_address","address"]),cp=ix(["phone","phone_1"]),cw=ix(["site","website"]);
   if(cn<0){alert("No 'name' column found");return}
-  var invalidPhones=0;
-  var items=rows.slice(1).filter(function(r){return r[cn]}).map(function(r){return{name:String(r[cn]||"").trim(),company:String(r[cn]||"").trim(),address:ca>-1?r[ca]:"",phone:cp>-1?String(r[cp]||"").replace(/\D/g,""):"",website:cw>-1?r[cw]:"",status:"New"}}).filter(function(x){if(x.phone&&!/^[0-9]{10}$/.test(x.phone)){invalidPhones++;return false}return true});
+  var invalidPhones=0,dups=0,seen={};data.leads.forEach(function(l){seen[leadKey(l)]=1});
+  var items=rows.slice(1).filter(function(r){return r[cn]}).map(function(r){return{name:String(r[cn]||"").trim(),company:String(r[cn]||"").trim(),address:ca>-1?r[ca]:"",phone:cp>-1?normPhone(r[cp]):"",website:cw>-1?r[cw]:"",status:"New"}}).filter(function(x){if(x.phone&&!/^[0-9]{10}$/.test(x.phone)){invalidPhones++;return false}var k=leadKey(x);if(seen[k]){dups++;return false}seen[k]=1;return true});
   if(!items.length){alert("No valid rows to import. Phone numbers must be exactly 10 digits, or left blank.");return}
   $("save").disabled=true;$("save").textContent="Importing…";
   for(var k=0;k<items.length;k+=200){
     var r=await sb.from("leads").insert(items.slice(k,k+200));
     if(r.error){alert(r.error.message);break}
   }
-  closeForm();await load();alert(items.length+" leads imported."+(invalidPhones?"\nSkipped "+invalidPhones+" rows with invalid phone numbers.":""));
+  closeForm();await load();alert(items.length+" leads imported."+(invalidPhones?"\nSkipped "+invalidPhones+" rows with invalid phone numbers.":"")+(dups?"\nSkipped "+dups+" duplicates.":""));
 }
 
 /* ---------- distribute leads (admin) ---------- */
@@ -317,7 +344,7 @@ function openDist(){
   h+='<div class="row"><button class="btn" id="eq">Split equally</button><button class="btn p" id="send">Send</button></div><button class="btn" id="dc" style="width:100%;margin-top:8px">Cancel</button><div class="note">Sent leads move to the employee’s panel and leave yours.</div>';
   $("sheet").innerHTML=h;$("m").classList.add("on");
   $("dc").onclick=closeForm;
-  $("eq").onclick=function(){var ins=document.querySelectorAll(".dn");if(!ins.length)return;var per=Math.floor(p/ins.length);ins.forEach(function(i){i.value=per})};
+  $("eq").onclick=function(){var ins=document.querySelectorAll(".dn");if(!ins.length)return;var per=Math.floor(p/ins.length);var rem=p-per*ins.length;ins.forEach(function(i,ix){i.value=per+(ix<rem?1:0)})};
   $("send").onclick=doDist;
 }
 async function doDist(){
@@ -329,8 +356,9 @@ async function doDist(){
   $("send").disabled=true;var pos=0;
   for(var k=0;k<plan.length;k++){
     var part=ids.slice(pos,pos+plan[k].n);pos+=plan[k].n;
-    var r=await sb.from("leads").update({owner_id:plan[k].u}).in("id",part);
-    if(r.error){alert(r.error.message);break}
+    var bad=null;
+    for(var j=0;j<part.length&&!bad;j+=100){var r=await sb.from("leads").update({owner_id:plan[k].u}).in("id",part.slice(j,j+100));if(r.error)bad=r.error}
+    if(bad){alert(bad.message);break}
   }
   closeForm();await load();alert(tot+" leads sent.");
 }
@@ -395,7 +423,7 @@ async function openTeam(){
   var h='<h1>Team</h1><button class="btn p" id="addb" style="width:100%;margin-bottom:10px">➕ Add employee</button><div class="note">Passwords are stored encrypted and cannot be viewed. If someone forgets theirs, set a new one here and tell them.</div>';
   members.forEach(function(m){
     var off=st[m.id]===false;
-    h+='<div class="card"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+(m.avatar_url?'<img src="'+esc(m.avatar_url)+'" alt="Profile" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--bd)">':'<div style="width:52px;height:52px;border-radius:50%;background:var(--bd);display:flex;align-items:center;justify-content:center;font-size:22px">👤</div>')+'<div><b data-dash="'+m.id+'" style="cursor:pointer;color:var(--ac)">'+esc(names[m.id])+'</b><div class="mu">'+esc(m.email||"")+'</div></div></div><span class="tag">'+esc(m.role||"employee")+'</span>'+(off?'<span class="tag s-er">Deactivated</span>':"")+'<div class="act"><button class="btn p" data-dash="'+m.id+'">📊 Today’s work</button><button class="btn" data-avatar="'+m.id+'">Upload/change photo</button><button class="btn" data-n="'+m.id+'">Edit name</button><button class="btn" data-t="'+m.id+'">Transfer data</button><button class="btn" data-p="'+esc(m.email||"")+'">Set new password</button>'+(m.id!==me.id?'<button class="btn" data-a="'+m.id+'" data-s="'+(off?"on":"off")+'">'+(off?"Activate":"Deactivate")+'</button>':"")+'</div></div>';
+    h+='<div class="card"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+(m.avatar_url?'<img src="'+esc(m.avatar_url)+'" alt="Profile" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--bd)">':'<div style="width:52px;height:52px;border-radius:50%;background:var(--bd);display:flex;align-items:center;justify-content:center;font-size:22px">👤</div>')+'<div><b data-dash="'+m.id+'" style="cursor:pointer;color:var(--ac)">'+esc(names[m.id])+'</b><div class="mu">'+esc(m.email||"")+'</div></div></div><span class="tag">'+esc(m.role||"employee")+'</span>'+(off?'<span class="tag s-er">Deactivated</span>':"")+'<div class="act"><button class="btn p" data-dash="'+m.id+'">📊 Today’s work</button><button class="btn" data-avatar="'+m.id+'">Upload/change photo</button><button class="btn" data-n="'+m.id+'">Edit name</button><button class="btn" data-t="'+m.id+'">Transfer data</button><button class="btn" data-p="'+esc(m.email||"")+'">Set new password</button>'+(m.role==="admin"?"":'<button class="btn" data-rd="'+m.id+'">Reset device</button>')+(m.id!==me.id?'<button class="btn" data-a="'+m.id+'" data-s="'+(off?"on":"off")+'">'+(off?"Activate":"Deactivate")+'</button>':"")+'</div></div>';
   });
   h+='<button class="btn" id="tc" style="width:100%">Close</button>';
   $("sheet").innerHTML=h;$("m").classList.add("on");
@@ -419,6 +447,12 @@ async function openTeam(){
         if(sv.error){alert("Photo uploaded but profile save failed: "+sv.error.message+"\nRun the setup SQL first.");return}
         await load();openTeam();alert("Employee profile photo updated.");
       };inp.click();return;
+    }
+    if(d.rd){
+      if(!confirm("Reset device for "+names[d.rd]+"? They can then log in from a new device (the first one to log in becomes their device)."))return;
+      var rr2=await sb.rpc("admin_reset_device",{target_id:d.rd});
+      if(rr2.error){alert(rr2.error.message);return}
+      alert("Device reset. "+names[d.rd]+" can now log in from a new device.");return;
     }
     if(d.dash){openDash(d.dash);return}
     if(d.t){openTransfer(d.t);return}
