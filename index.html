@@ -150,7 +150,7 @@ async function load(){
   var mine=members.find(function(m){return m.id===me.id});
   isAdmin=!!(mine&&mine.role==="admin");
   $("who").textContent="👤 "+(names[me.id]||me.email)+" ("+(isAdmin?"Admin":"Employee")+")";
-  var myav=$("myavatar");if(mine&&mine.avatar_url){myav.src=mine.avatar_url;myav.style.display="block"}else{myav.style.display="none"}
+  var myav=$("myavatar");if(myav){if(mine&&mine.avatar_url){myav.src=mine.avatar_url;myav.style.display="block"}else{myav.style.display="none"}}
   if(mine&&!mine.full_name&&!nameAsked)askName();
   var s=$("mem");
   if(isAdmin){s.style.display="block";s.innerHTML='<option value="all">All members</option>'+members.map(function(m){return'<option value="'+m.id+'"'+(m.id===viewUid?" selected":"")+'>'+esc(names[m.id])+'</option>'}).join("")}
