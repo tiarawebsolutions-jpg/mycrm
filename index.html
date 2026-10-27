@@ -113,7 +113,7 @@ function showLogin(msg){
 }
 async function start(u){
   me=u;
-  $("app").innerHTML='<div class="wrap"><div class="hd"><div><h1 style="margin-bottom:0">My CRM</h1><div class="mu" id="who"></div></div><div class="hdb"><button class="btn" id="mywa">📲 My WhatsApp no.</button><button class="btn" id="out">Sign out</button></div></div>'+
+  $("app").innerHTML='<div class="wrap"><div class="hd"><div style="display:flex;align-items:center;gap:10px"><img id="myavatar" alt="Profile" style="display:none;width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--bd)"><div><h1 style="margin-bottom:0">My CRM</h1><div class="mu" id="who"></div></div></div><div class="hdb"><button class="btn" id="mywa">📲 My WhatsApp no.</button><button class="btn" id="out">Sign out</button></div></div>'+
   '<div class="tabs"><button id="t-leads" class="on">Leads</button><button id="t-comp">Complaints</button></div>'+
   '<div class="stats" id="stats"></div><div id="today"></div><div id="dist"></div><select id="mem" style="display:none"></select>'+
   '<div class="top"><input id="q" placeholder="Search name, phone, area…"><select id="f" style="width:130px;margin:0"></select></div>'+
