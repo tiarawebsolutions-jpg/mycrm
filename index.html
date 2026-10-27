@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>My CRM</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1c2430;--mu:#6b7686;--bd:#e3e7ee;--ac:#1f6feb;--ok:#1a7f4b;--wa:#b7791f;--er:#c0392b}
+@media (prefers-color-scheme:dark){:root{--bg:#12161c;--card:#1b222c;--tx:#e8edf3;--mu:#93a0b2;--bd:#2a3340;--ac:#4c8dff;--ok:#43c383;--wa:#e0a84a;--er:#ef6a5b}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px}
+body{padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+.wrap{max-width:640px;margin:0 auto;padding:12px 12px 90px}
+h1{font-size:18px;margin:6px 0 10px}
+.hd{display:flex;justify-content:space-between;align-items:center}
+.tabs{display:flex;gap:8px;margin-bottom:10px}
+.tabs button{flex:1;padding:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:10px;font-size:15px}
+.tabs button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);font:inherit;margin-bottom:8px}
+textarea{min-height:70px}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:10px}
+.card b{font-size:16px}.mu{color:var(--mu);font-size:13px}
+.tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;border:1px solid var(--bd);margin-right:4px}
+.s-ok{color:var(--ok)}.s-wa{color:var(--wa)}.s-er{color:var(--er)}
+.act{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.btn{padding:8px 12px;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);font-size:14px;text-decoration:none}
+.btn.p{background:var(--ac);color:#fff;border-color:var(--ac)}
+.fab{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ac);color:#fff;border:0;border-radius:99px;padding:14px 20px;font-size:15px;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-end;justify-content:center;z-index:20}
+.modal.on{display:flex}
+.sheet{background:var(--bg);width:100%;max-width:640px;max-height:92%;overflow:auto;border-radius:16px 16px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom,0px))}
+.top{display:flex;gap:8px}.top input{margin:0}
+.stats{display:flex;gap:8px;margin-bottom:10px;overflow-x:auto}
+.stats div{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:8px 12px;white-space:nowrap}
+.stats b{display:block;font-size:18px}
+.note{font-size:12px;color:var(--mu);margin:6px 0}
+.login{max-width:360px;margin:12vh auto;padding:0 16px}
+.err{color:var(--er);font-size:13px;margin:6px 0}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+var sb=supabase.createClient("https://smxjcandsguqnkfdevxt.supabase.co","sb_publishable_Trk5PF7L7DM_bpgFXCLlLg_xE-h_VSN");
+var LS=["New","Contacted","Interested","Deal done","Not interested"],CS=["Open","In progress","Resolved"];
+var tab="leads",data={leads:[],complaints:[]},me=null,members=[],names={},isAdmin=false,viewUid="all",dueOnly=false,editing=null;
+var $=function(i){return document.getElementById(i)};
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function today(){return new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)}
+function isDue(x){return x.follow_up&&x.follow_up<=today()&&x.status!=="Deal done"&&x.status!=="Not interested"}
+function stCls(s){return(s==="Deal done"||s==="Resolved")?"s-ok":(s==="Not interested"||s==="Open")?"s-er":"s-wa"}
+
+/* ---------- login ---------- */
+function showLogin(msg){
+  $("app").innerHTML='<div class="login"><h1>My CRM</h1><input id="em" type="email" placeholder="Email" autocomplete="username"><input id="pw" type="password" placeholder="Password" autocomplete="current-password"><div class="err" id="er">'+esc(msg||"")+'</div><button class="btn p" id="go" style="width:100%;padding:12px">Sign in</button></div>';
+  $("go").onclick=async function(){
+    $("go").disabled=true;$("er").textContent="";
+    var r=await sb.auth.signInWithPassword({email:$("em").value.trim(),password:$("pw").value});
+    if(r.error){$("er").textContent=r.error.message;$("go").disabled=false;return}
+    start(r.data.user);
+  };
+}
+async function start(u){
+  me=u;
+  $("app").innerHTML='<div class="wrap"><div class="hd"><h1>My CRM</h1><button class="btn" id="out">Sign out</button></div>'+
+  '<div class="tabs"><button id="t-leads" class="on">Leads</button><button id="t-comp">Complaints</button></div>'+
+  '<div class="stats" id="stats"></div><div id="today"></div><div id="dist"></div><select id="mem" style="display:none"></select>'+
+  '<div class="top"><input id="q" placeholder="Search name, phone, area…"><select id="f" style="width:130px;margin:0"></select></div>'+
+  '<div style="height:10px"></div><div id="list"></div><div class="note" id="mode"></div></div>'+
+  '<button class="fab" id="add">+ New</button><div class="modal" id="m"><div class="sheet" id="sheet"></div></div>';
+  $("out").onclick=async function(){await sb.auth.signOut();showLogin()};
+  $("t-leads").onclick=function(){setTab("leads")};
+  $("t-comp").onclick=function(){setTab("complaints")};
+  $("add").onclick=function(){openForm()};
+  $("q").oninput=render;$("f").onchange=render;
+  $("mem").onchange=function(){viewUid=this.value;render()};
+  $("m").addEventListener("click",function(e){if(e.target===$("m"))closeForm()});
+  $("list").addEventListener("click",function(e){
+    var t=e.target;
+    if(t.dataset.e)openForm(data[tab].find(function(x){return x.id===t.dataset.e}));
+    if(t.dataset.d)delItem(t.dataset.d);
+  });
+  await load();
+}
+function setTab(t){tab=t;$("f").value="";$("q").value="";$("t-leads").className=t==="leads"?"on":"";$("t-comp").className=t==="complaints"?"on":"";render()}
+
+/* ---------- data ---------- */
+async function load(){
+  var r=await Promise.all([
+    sb.from("leads").select("*").order("created_at",{ascending:false}),
+    sb.from("complaints").select("*").order("created_at",{ascending:false}),
+    sb.from("profiles").select("*")]);
+  if(r[0].error){alert("Could not load data: "+r[0].error.message);return}
+  data.leads=r[0].data||[];data.complaints=r[1].data||[];members=r[2].data||[];
+  members.forEach(function(m){names[m.id]=m.full_name||m.email||"Member"});
+  var mine=members.find(function(m){return m.id===me.id});
+  isAdmin=!!(mine&&mine.role==="admin");
+  var s=$("mem");
+  if(isAdmin){s.style.display="block";s.innerHTML='<option value="all">All members</option>'+members.map(function(m){return'<option value="'+m.id+'"'+(m.id===viewUid?" selected":"")+'>'+esc(names[m.id])+'</option>'}).join("")}
+  $("mode").textContent=isAdmin?"Admin view: you can see all members’ data.":"This is your own panel.";
+  render();
+}
+async function delItem(id){
+  if(!confirm("Are you sure you want to delete this?"))return;
+  var r=await sb.from(tab).delete().eq("id",id);
+  if(r.error){alert(r.error.message);return}
+  await load();
+}
+
+/* ---------- render ---------- */
+function waUrl(x){
+  var d=String(x.phone||"").replace(/\D/g,"").replace(/^0+/,"");if(d.length===10)d="91"+d;
+  var m=tab==="leads"?"Hello "+(x.name||"")+", I am following up on our recent conversation. Is it a good time to talk?":"Hello "+(x.name||"")+", I wanted to give you an update on your complaint.";
+  return"https://wa.me/"+d+"?text="+encodeURIComponent(m);
+}
+function calLink(x){
+  if(tab!=="leads"||!x.follow_up)return"";
+  var a=x.follow_up.replace(/-/g,""),n=new Date(x.follow_up+"T00:00:00");n.setDate(n.getDate()+1);
+  var b=n.getFullYear()+("0"+(n.getMonth()+1)).slice(-2)+("0"+n.getDate()).slice(-2);
+  return'<a class="btn" target="_blank" rel="noopener" href="https://calendar.google.com/calendar/render?action=TEMPLATE&amp;text='+encodeURIComponent("Follow-up: "+(x.name||""))+"&amp;dates="+a+"/"+b+"&amp;details="+encodeURIComponent("Phone: "+(x.phone||""))+'">📅 Reminder</a>';
+}
+function render(){
+  if(!$("list"))return;
+  var sts=tab==="leads"?LS:CS;
+  var arr=data[tab].filter(function(x){return(viewUid==="all"||x.owner_id===viewUid)&&(!(dueOnly&&tab==="leads")||isDue(x))});
+  var fv=$("f").value||"";
+  $("f").innerHTML='<option value="">All statuses</option>'+sts.map(function(s){return'<option'+(s===fv?" selected":"")+'>'+s+'</option>'}).join("");
+  var base=data[tab].filter(function(x){return viewUid==="all"||x.owner_id===viewUid});
+  $("stats").innerHTML='<div><b>'+base.length+'</b>Total</div>'+sts.map(function(s){return'<div><b>'+base.filter(function(x){return x.status===s}).length+'</b>'+s+'</div>'}).join("");
+  var nd=data.leads.filter(function(x){return(viewUid==="all"||x.owner_id===viewUid)&&isDue(x)}).length;
+  $("today").innerHTML=(tab==="leads"&&nd)?'<button class="btn p" id="dueb" style="width:100%;margin-bottom:10px">⏰ Follow-ups due: '+nd+(dueOnly?' (show all)':' (view)')+'</button>':"";
+  if($("dueb"))$("dueb").onclick=function(){dueOnly=!dueOnly;render()};
+  $("dist").innerHTML=(isAdmin&&tab==="leads")?'<button class="btn" id="distb" style="width:100%;margin-bottom:10px">📤 Distribute leads to team</button>':"";
+  if($("distb"))$("distb").onclick=openDist;
+  var q=$("q").value.toLowerCase();
+  arr=arr.filter(function(x){return(!fv||x.status===fv)&&(!q||JSON.stringify(x).toLowerCase().indexOf(q)>-1)});
+  if(!arr.length){$("list").innerHTML='<div class="card mu">Nothing here yet. Tap "+ New"'+(tab==="leads"?" or import a CSV.":".")+'</div>';return}
+  $("list").innerHTML=arr.map(function(x){
+    var h='<div class="card"><b>'+esc(x.name||"(no name)")+'</b> '+(isAdmin?'<span class="tag">👤 '+esc(names[x.owner_id]||"Member")+'</span>':"")+'<span class="tag '+stCls(x.status)+'">'+esc(x.status)+'</span>';
+    if(tab==="leads"){
+      h+='<div class="mu">'+esc(x.address||"")+'</div><div>'+(x.phone?'📞 '+esc(x.phone):"")+' <span class="tag">'+(x.website?"Has website":"No website")+'</span></div>';
+      if(x.follow_up)h+='<div class="mu">Follow-up: '+esc(x.follow_up)+'</div>';
+    }else h+='<div class="mu">'+(x.phone?'📞 '+esc(x.phone)+' · ':"")+esc(x.complaint_date||"")+'</div><div>'+esc(x.issue||"")+'</div>';
+    if(x.notes)h+='<div class="mu">📝 '+esc(x.notes)+'</div>';
+    h+='<div class="act">'+(x.phone?'<a class="btn" href="tel:'+esc(x.phone)+'">Call</a><a class="btn" target="_blank" rel="noopener" href="'+waUrl(x)+'">WhatsApp</a>':"")+calLink(x)+'<button class="btn" data-e="'+x.id+'">Edit</button><button class="btn" data-d="'+x.id+'">Delete</button></div></div>';
+    return h;
+  }).join("");
+}
+
+/* ---------- form ---------- */
+function opts(a,v){return a.map(function(s){return'<option'+(s===v?" selected":"")+'>'+s+'</option>'}).join("")}
+function openForm(x){
+  x=x||{};editing=x;
+  var h='<h1>'+(x.id?"Edit ":"New ")+(tab==="leads"?"lead":"complaint")+'</h1>';
+  h+='<input id="f_name" placeholder="Name / business name" value="'+esc(x.name)+'"><input id="f_phone" type="tel" placeholder="Phone" value="'+esc(x.phone)+'">';
+  if(tab==="leads"){
+    h+='<input id="f_address" placeholder="Address / area" value="'+esc(x.address)+'"><input id="f_website" placeholder="Website (leave empty if none)" value="'+esc(x.website)+'">';
+    h+='<select id="f_status">'+opts(LS,x.status)+'</select><div class="mu">Follow-up date</div><input id="f_fu" type="date" value="'+esc(x.follow_up)+'">';
+  }else{
+    h+='<textarea id="f_issue" placeholder="What is the complaint?">'+esc(x.issue)+'</textarea><input id="f_date" type="date" value="'+esc(x.complaint_date||today())+'"><select id="f_status">'+opts(CS,x.status)+'</select>';
+  }
+  h+='<textarea id="f_notes" placeholder="Notes">'+esc(x.notes)+'</textarea><div class="row"><button class="btn p" id="save">Save</button><button class="btn" id="cancel">Cancel</button></div>';
+  if(tab==="leads"&&!x.id)h+='<hr style="border:0;border-top:1px solid var(--bd);margin:14px 0"><b>Import Outscraper CSV</b><div class="note">Choose the CSV file. Name, address, phone and website are added automatically.</div><input id="csv" type="file" accept=".csv,text/csv">';
+  $("sheet").innerHTML=h;$("m").classList.add("on");
+  $("cancel").onclick=closeForm;
+  $("save").onclick=saveForm;
+  if($("csv"))$("csv").onchange=importCsv;
+}
+function closeForm(){$("m").classList.remove("on")}
+async function saveForm(){
+  var g=function(i){var e=$(i);return e?e.value.trim():undefined};
+  var o={name:g("f_name"),phone:g("f_phone"),status:g("f_status"),notes:g("f_notes")};
+  if(!o.name&&!o.phone){alert("Enter a name or phone");return}
+  if(tab==="leads"){o.address=g("f_address");o.website=g("f_website");o.follow_up=g("f_fu")||null}
+  else{o.issue=g("f_issue");o.complaint_date=g("f_date")||null}
+  $("save").disabled=true;
+  var r=editing.id?await sb.from(tab).update(o).eq("id",editing.id):await sb.from(tab).insert(o);
+  if(r.error){alert(r.error.message);$("save").disabled=false;return}
+  closeForm();await load();
+}
+
+/* ---------- CSV import ---------- */
+function parseCsv(t){
+  var r=[],row=[],f="",q=false;
+  for(var i=0;i<t.length;i++){var c=t[i];
+    if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else q=false}else f+=c}
+    else if(c==='"')q=true;
+    else if(c===","){row.push(f);f=""}
+    else if(c==="\n"){row.push(f);r.push(row);row=[];f=""}
+    else if(c!=="\r")f+=c;
+  }
+  if(f||row.length){row.push(f);r.push(row)}
+  return r;
+}
+async function importCsv(ev){
+  var file=ev.target.files[0];if(!file)return;
+  var rows=parseCsv(await file.text());
+  if(rows.length<2){alert("The CSV looks empty");return}
+  var hd=rows[0].map(function(h){return h.trim().toLowerCase()});
+  var ix=function(n){for(var k=0;k<n.length;k++){var j=hd.indexOf(n[k]);if(j>-1)return j}return -1};
+  var cn=ix(["name"]),ca=ix(["full_address","address"]),cp=ix(["phone","phone_1"]),cw=ix(["site","website"]);
+  if(cn<0){alert("No 'name' column found");return}
+  var items=rows.slice(1).filter(function(r){return r[cn]}).map(function(r){return{name:r[cn],address:ca>-1?r[ca]:"",phone:cp>-1?r[cp]:"",website:cw>-1?r[cw]:"",status:"New"}});
+  $("save").disabled=true;$("save").textContent="Importing…";
+  for(var k=0;k<items.length;k+=200){
+    var r=await sb.from("leads").insert(items.slice(k,k+200));
+    if(r.error){alert(r.error.message);break}
+  }
+  closeForm();await load();alert(items.length+" leads imported.");
+}
+
+/* ---------- distribute leads (admin) ---------- */
+function pool(){return data.leads.filter(function(x){return x.owner_id===me.id&&x.status==="New"})}
+function openDist(){
+  var p=pool().length,emps=members.filter(function(m){return m.id!==me.id});
+  var h='<h1>Distribute leads</h1><div class="mu">Leads available (yours, status New): <b>'+p+'</b></div><div style="height:8px"></div>';
+  if(!emps.length)h+='<div class="card mu">No team members yet. Add users in Supabase first.</div>';
+  emps.forEach(function(m){h+='<div class="row" style="align-items:center"><div>'+esc(names[m.id])+'</div><input class="dn" data-u="'+m.id+'" type="number" min="0" placeholder="0" style="margin:0 0 8px"></div>'});
+  h+='<div class="row"><button class="btn" id="eq">Split equally</button><button class="btn p" id="send">Send</button></div><button class="btn" id="dc" style="width:100%;margin-top:8px">Cancel</button><div class="note">Sent leads move to the employee’s panel and leave yours.</div>';
+  $("sheet").innerHTML=h;$("m").classList.add("on");
+  $("dc").onclick=closeForm;
+  $("eq").onclick=function(){var ins=document.querySelectorAll(".dn");if(!ins.length)return;var per=Math.floor(p/ins.length);ins.forEach(function(i){i.value=per})};
+  $("send").onclick=doDist;
+}
+async function doDist(){
+  var ids=pool().map(function(x){return x.id}),ins=document.querySelectorAll(".dn"),plan=[],tot=0;
+  ins.forEach(function(i){var n=parseInt(i.value)||0;if(n>0){plan.push({u:i.dataset.u,n:n});tot+=n}});
+  if(!plan.length){alert("Enter how many leads each employee gets");return}
+  if(tot>ids.length){alert("You entered "+tot+" but only "+ids.length+" leads are available");return}
+  if(!confirm("Send "+tot+" leads?"))return;
+  $("send").disabled=true;var pos=0;
+  for(var k=0;k<plan.length;k++){
+    var part=ids.slice(pos,pos+plan[k].n);pos+=plan[k].n;
+    var r=await sb.from("leads").update({owner_id:plan[k].u}).in("id",part);
+    if(r.error){alert(r.error.message);break}
+  }
+  closeForm();await load();alert(tot+" leads sent.");
+}
+
+/* ---------- boot ---------- */
+sb.auth.getSession().then(function(r){if(r.data&&r.data.session)start(r.data.session.user);else showLogin()});
+</script>
+</body>
+</html>
