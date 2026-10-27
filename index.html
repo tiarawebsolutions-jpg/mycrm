@@ -130,6 +130,7 @@ async function start(u){
   $("m").addEventListener("click",function(e){if(e.target===$("m"))closeForm()});
   $("list").addEventListener("click",function(e){
     var t=e.target;
+    if(t.dataset.lg){var lx=data[tab].find(function(x){return x.id===t.dataset.i});if(lx)logAct(lx,t.dataset.lg)}
     if(t.dataset.e)openForm(data[tab].find(function(x){return x.id===t.dataset.e}));
     if(t.dataset.d)delItem(t.dataset.d);
     if(t.dataset.r){var it=data[tab].find(function(x){return x.id===t.dataset.r});if(it)remind(it)}
@@ -204,11 +205,11 @@ function render(){
   $("list").innerHTML=arr.map(function(x){
     var h='<div class="card"><b>'+esc(x.name||"(no name)")+'</b> '+(isAdmin?'<span class="tag">👤 '+esc(names[x.owner_id]||"Member")+'</span>':"")+'<span class="tag '+stCls(x.status)+'">'+esc(x.status)+'</span>';
     if(tab==="leads"){
-      h+='<div class="mu">'+esc(x.address||"")+'</div><div>'+(x.phone?'📞 '+esc(x.phone):"")+' <span class="tag">'+(x.website?"Has website":"No website")+'</span></div>';
+      h+=(x.company?'<div>🏢 '+esc(x.company)+'</div>':"")+'<div class="mu">'+esc(x.address||"")+'</div><div>'+(x.phone?'📞 '+esc(x.phone):"")+' <span class="tag">'+(x.website?"Has website":"No website")+'</span></div>';
       if(x.follow_up)h+='<div class="mu">Follow-up: '+esc(x.follow_up)+'</div>';
     }else h+='<div class="mu">'+(x.phone?'📞 '+esc(x.phone)+' · ':"")+esc(x.complaint_date||"")+'</div><div>'+esc(x.issue||"")+'</div>';
     if(x.notes)h+='<div class="mu">📝 '+esc(x.notes)+'</div>';
-    h+='<div class="act">'+(x.phone?'<a class="btn" href="tel:'+esc(x.phone)+'">Call</a><a class="btn" target="_blank" rel="noopener" href="'+waUrl(x)+'">WhatsApp</a>':"")+calLink(x)+(x.follow_up?'<button class="btn" data-r="'+x.id+'">📲 Remind me</button>':"")+'<button class="btn" data-e="'+x.id+'">Edit</button><button class="btn" data-d="'+x.id+'">Delete</button></div></div>';
+    h+='<div class="act">'+(x.phone?'<a class="btn" data-lg="Call" data-i="'+x.id+'" href="tel:'+esc(x.phone)+'">Call</a><a class="btn" data-lg="WhatsApp" data-i="'+x.id+'" target="_blank" rel="noopener" href="'+waUrl(x)+'">WhatsApp</a>':"")+calLink(x)+(x.follow_up?'<button class="btn" data-r="'+x.id+'">📲 Remind me</button>':"")+'<button class="btn" data-e="'+x.id+'">Edit</button><button class="btn" data-d="'+x.id+'">Delete</button></div></div>';
     return h;
   }).join("");
 }
@@ -218,14 +219,14 @@ function opts(a,v){return a.map(function(s){return'<option'+(s===v?" selected":"
 function openForm(x){
   x=x||{};editing=x;
   var h='<h1>'+(x.id?"Edit ":"New ")+(tab==="leads"?"lead":"complaint")+'</h1>';
-  h+='<input id="f_name" placeholder="Name / business name" value="'+esc(x.name)+'"><input id="f_phone" type="tel" inputmode="numeric" maxlength="10" pattern="[0-9]{10}" placeholder="Mobile number (10 digits)" value="'+esc(x.phone)+'">';
+  h+='<input id="f_name" placeholder="'+(tab==="leads"?"Customer name *":"Name / business name")+'" value="'+esc(x.name)+'">'+(tab==="leads"?'<input id="f_company" placeholder="Company name *" value="'+esc(x.company)+'">':"")+'<input id="f_phone" type="tel" inputmode="numeric" maxlength="10" pattern="[0-9]{10}" placeholder="Mobile number (10 digits)'+(tab==="leads"?" *":"")+'" value="'+esc(x.phone)+'">';
   if(tab==="leads"){
-    h+='<input id="f_address" placeholder="Address / area" value="'+esc(x.address)+'"><input id="f_website" placeholder="Website (leave empty if none)" value="'+esc(x.website)+'">';
+    h+='<input id="f_address" placeholder="Address / area *" value="'+esc(x.address)+'"><input id="f_website" placeholder="Website (leave empty if none)" value="'+esc(x.website)+'"><div class="note">Fields marked * are required.</div>';
     h+='<select id="f_status">'+opts(LS,x.status)+'</select><div class="mu">Follow-up date</div><input id="f_fu" type="date" value="'+esc(x.follow_up)+'">';
   }else{
     h+='<textarea id="f_issue" placeholder="What is the complaint?">'+esc(x.issue)+'</textarea><input id="f_date" type="date" value="'+esc(x.complaint_date||today())+'"><select id="f_status">'+opts(CS,x.status)+'</select>';
   }
-  h+='<textarea id="f_notes" placeholder="Notes">'+esc(x.notes)+'</textarea><div class="row"><button class="btn p" id="save">Save</button><button class="btn" id="cancel">Cancel</button></div>';
+  h+='<textarea id="f_talk" placeholder="What did you talk about today? (visible to admin)"></textarea><textarea id="f_notes" placeholder="Notes">'+esc(x.notes)+'</textarea><div class="row"><button class="btn p" id="save">Save</button><button class="btn" id="cancel">Cancel</button></div>';
   if(tab==="leads"&&!x.id&&isAdmin)h+='<hr style="border:0;border-top:1px solid var(--bd);margin:14px 0"><b>Import Outscraper CSV</b><div class="note">Choose the CSV file. Name, address, phone and website are added automatically.</div><input id="csv" type="file" accept=".csv,text/csv">';
   $("sheet").innerHTML=h;$("m").classList.add("on");
   $("cancel").onclick=closeForm;
@@ -235,16 +236,43 @@ function openForm(x){
 function closeForm(){$("m").classList.remove("on")}
 async function saveForm(){
   var g=function(i){var e=$(i);return e?e.value.trim():undefined};
-  var o={name:g("f_name"),phone:g("f_phone"),status:g("f_status"),notes:g("f_notes")};
+  var o={name:g("f_name"),phone:g("f_phone"),status:g("f_status"),notes:g("f_notes")},talk=g("f_talk"),was=editing.status;
   if(!o.name&&!o.phone){alert("Enter a name or phone");return}
   o.phone=String(o.phone||"").trim();
   if(o.phone && !/^[0-9]{10}$/.test(o.phone)){alert("Mobile number must contain exactly 10 digits (numbers only).");return}
-  if(tab==="leads"){o.address=g("f_address");o.website=g("f_website");o.follow_up=g("f_fu")||null}
+  if(tab==="leads"){o.address=g("f_address");o.website=g("f_website");o.follow_up=g("f_fu")||null;o.company=g("f_company");
+    var miss=[];if(!o.name)miss.push("Customer name");if(!o.company)miss.push("Company name");if(!o.phone)miss.push("Contact number");if(!o.address)miss.push("Address");
+    if(miss.length){alert("Required: "+miss.join(", "));return}}
   else{o.issue=g("f_issue");o.complaint_date=g("f_date")||null}
   $("save").disabled=true;
   var r=editing.id?await sb.from(tab).update(o).eq("id",editing.id):await sb.from(tab).insert(o);
   if(r.error){alert(r.error.message);$("save").disabled=false;return}
+  if(talk||(editing.id&&o.status!==was))await logAct({id:editing.id,name:o.name,phone:o.phone},talk?"Talk":"Status change",talk,o.status);
   closeForm();await load();
+}
+async function logAct(it,kind,note,status){
+  try{await sb.from("lead_activity").insert({owner_id:me.id,item_type:tab,item_id:String(it.id||""),item_name:it.name||"",item_phone:it.phone||"",kind:kind,status:status||it.status||null,note:note||null})}catch(e){}
+}
+async function openDash(uid,day){
+  day=day||today();
+  $("sheet").innerHTML='<h1>📊 '+esc(names[uid])+'</h1><input id="dd" type="date" value="'+day+'"><div id="db" class="mu">Loading…</div><button class="btn" id="dback" style="width:100%;margin-top:8px">Back</button>';
+  $("m").classList.add("on");
+  $("dback").onclick=openTeam;
+  $("dd").onchange=function(){openDash(uid,this.value||today())};
+  var a=new Date(day+"T00:00:00"),b=new Date(a.getTime()+864e5);
+  var r=await sb.from("lead_activity").select("*").eq("owner_id",uid).gte("created_at",a.toISOString()).lt("created_at",b.toISOString()).order("created_at",{ascending:false});
+  if(r.error){$("db").innerHTML='<div class="err">'+esc(r.error.message)+'<br>Please run the activity setup SQL in Supabase first.</div>';return}
+  var L=r.data||[],ids={};
+  L.forEach(function(x){ids[x.item_id||x.item_name+x.item_phone]=1});
+  var c=function(k){return L.filter(function(x){return x.kind===k}).length};
+  var deals=L.filter(function(x){return x.kind==="Status change"&&x.status==="Deal done"}).length;
+  var due=data.leads.filter(function(x){return x.owner_id===uid&&isDue(x)}).length;
+  var h='<div class="stats"><div><b>'+Object.keys(ids).length+'</b>Clients</div><div><b>'+c("Call")+'</b>Calls</div><div><b>'+c("WhatsApp")+'</b>WhatsApp</div><div><b>'+c("Talk")+'</b>Talks</div><div><b>'+deals+'</b>Deals</div><div><b>'+due+'</b>Follow-ups due</div></div><div class="note">Calls/WhatsApp = the button was tapped. Talks = the note the employee wrote.</div>';
+  h+=L.length?L.map(function(x){
+    var tm=new Date(x.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+    return'<div class="card"><b>'+esc(x.item_name||"(no name)")+'</b> <span class="tag">'+esc(x.kind)+'</span>'+(x.status?'<span class="tag '+stCls(x.status)+'">'+esc(x.status)+'</span>':"")+(x.item_type==="complaints"?'<span class="tag">Complaint</span>':"")+'<div class="mu">'+tm+(x.item_phone?' · 📞 '+esc(x.item_phone):"")+'</div>'+(x.note?'<div>'+esc(x.note)+'</div>':"")+'</div>';
+  }).join(""):'<div class="card mu">No activity on this day.</div>';
+  $("db").innerHTML=h;
 }
 
 /* ---------- CSV import ---------- */
@@ -269,7 +297,7 @@ async function importCsv(ev){
   var cn=ix(["name"]),ca=ix(["full_address","address"]),cp=ix(["phone","phone_1"]),cw=ix(["site","website"]);
   if(cn<0){alert("No 'name' column found");return}
   var invalidPhones=0;
-  var items=rows.slice(1).filter(function(r){return r[cn]}).map(function(r){return{name:String(r[cn]||"").trim(),address:ca>-1?r[ca]:"",phone:cp>-1?String(r[cp]||"").replace(/\D/g,""):"",website:cw>-1?r[cw]:"",status:"New"}}).filter(function(x){if(x.phone&&!/^[0-9]{10}$/.test(x.phone)){invalidPhones++;return false}return true});
+  var items=rows.slice(1).filter(function(r){return r[cn]}).map(function(r){return{name:String(r[cn]||"").trim(),company:String(r[cn]||"").trim(),address:ca>-1?r[ca]:"",phone:cp>-1?String(r[cp]||"").replace(/\D/g,""):"",website:cw>-1?r[cw]:"",status:"New"}}).filter(function(x){if(x.phone&&!/^[0-9]{10}$/.test(x.phone)){invalidPhones++;return false}return true});
   if(!items.length){alert("No valid rows to import. Phone numbers must be exactly 10 digits, or left blank.");return}
   $("save").disabled=true;$("save").textContent="Importing…";
   for(var k=0;k<items.length;k+=200){
@@ -367,7 +395,7 @@ async function openTeam(){
   var h='<h1>Team</h1><button class="btn p" id="addb" style="width:100%;margin-bottom:10px">➕ Add employee</button><div class="note">Passwords are stored encrypted and cannot be viewed. If someone forgets theirs, set a new one here and tell them.</div>';
   members.forEach(function(m){
     var off=st[m.id]===false;
-    h+='<div class="card"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+(m.avatar_url?'<img src="'+esc(m.avatar_url)+'" alt="Profile" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--bd)">':'<div style="width:52px;height:52px;border-radius:50%;background:var(--bd);display:flex;align-items:center;justify-content:center;font-size:22px">👤</div>')+'<div><b>'+esc(names[m.id])+'</b><div class="mu">'+esc(m.email||"")+'</div></div></div><span class="tag">'+esc(m.role||"employee")+'</span>'+(off?'<span class="tag s-er">Deactivated</span>':"")+'<div class="act"><button class="btn" data-avatar="'+m.id+'">Upload/change photo</button><button class="btn" data-n="'+m.id+'">Edit name</button><button class="btn" data-t="'+m.id+'">Transfer data</button><button class="btn" data-p="'+esc(m.email||"")+'">Set new password</button>'+(m.id!==me.id?'<button class="btn" data-a="'+m.id+'" data-s="'+(off?"on":"off")+'">'+(off?"Activate":"Deactivate")+'</button>':"")+'</div></div>';
+    h+='<div class="card"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+(m.avatar_url?'<img src="'+esc(m.avatar_url)+'" alt="Profile" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--bd)">':'<div style="width:52px;height:52px;border-radius:50%;background:var(--bd);display:flex;align-items:center;justify-content:center;font-size:22px">👤</div>')+'<div><b data-dash="'+m.id+'" style="cursor:pointer;color:var(--ac)">'+esc(names[m.id])+'</b><div class="mu">'+esc(m.email||"")+'</div></div></div><span class="tag">'+esc(m.role||"employee")+'</span>'+(off?'<span class="tag s-er">Deactivated</span>':"")+'<div class="act"><button class="btn p" data-dash="'+m.id+'">📊 Today’s work</button><button class="btn" data-avatar="'+m.id+'">Upload/change photo</button><button class="btn" data-n="'+m.id+'">Edit name</button><button class="btn" data-t="'+m.id+'">Transfer data</button><button class="btn" data-p="'+esc(m.email||"")+'">Set new password</button>'+(m.id!==me.id?'<button class="btn" data-a="'+m.id+'" data-s="'+(off?"on":"off")+'">'+(off?"Activate":"Deactivate")+'</button>':"")+'</div></div>';
   });
   h+='<button class="btn" id="tc" style="width:100%">Close</button>';
   $("sheet").innerHTML=h;$("m").classList.add("on");
@@ -392,6 +420,7 @@ async function openTeam(){
         await load();openTeam();alert("Employee profile photo updated.");
       };inp.click();return;
     }
+    if(d.dash){openDash(d.dash);return}
     if(d.t){openTransfer(d.t);return}
     if(d.a){
       var on=d.s==="on";
