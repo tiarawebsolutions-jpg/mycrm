@@ -4,30 +4,34 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>My CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--tx:#1c2430;--mu:#6b7686;--bd:#e3e7ee;--ac:#1f6feb;--ok:#1a7f4b;--wa:#b7791f;--er:#c0392b}
 @media (prefers-color-scheme:dark){:root{--bg:#12161c;--card:#1b222c;--tx:#e8edf3;--mu:#93a0b2;--bd:#2a3340;--ac:#4c8dff;--ok:#43c383;--wa:#e0a84a;--er:#ef6a5b}}
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px}
+html,body{margin:0;background:var(--bg);color:var(--tx);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+button,input,select,textarea{font-family:inherit}
 body{padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
 .wrap{max-width:640px;margin:0 auto;padding:16px 14px 100px}
-h1{font-size:18px;margin:6px 0 10px}
+h1{font-size:19px;font-weight:700;letter-spacing:-.01em;margin:6px 0 10px}
 .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px}
 .hd h1{margin:0}
 .hdb{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 #who{margin-top:6px;line-height:1.4;overflow-wrap:anywhere}
 .tabs{display:flex;gap:8px;margin-bottom:14px}
-.tabs button{flex:1;padding:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:10px;font-size:15px}
+.tabs button{font-weight:600;flex:1;padding:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:10px;font-size:15px}
 .tabs button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
 input,select,textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);font:inherit;margin-bottom:8px}
 textarea{min-height:70px}
 .row{display:flex;gap:8px}.row>*{flex:1}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:10px}
-.card b{font-size:16px}.mu{color:var(--mu);font-size:13px}
+.card b{font-size:16px;font-weight:600}.mu{color:var(--mu);font-size:13px;line-height:1.45}
 .tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;border:1px solid var(--bd);margin-right:4px}
 .s-ok{color:var(--ok)}.s-wa{color:var(--wa)}.s-er{color:var(--er)}
 .act{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
-.btn{padding:8px 12px;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);font-size:14px;text-decoration:none}
+.btn{font-weight:500;padding:9px 13px;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);font-size:14px;text-decoration:none}
 .btn.p{background:var(--ac);color:#fff;border-color:var(--ac)}
 .fab{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ac);color:#fff;border:0;border-radius:99px;padding:14px 20px;font-size:15px;box-shadow:0 4px 14px rgba(0,0,0,.25)}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-end;justify-content:center;z-index:20}
@@ -36,7 +40,9 @@ textarea{min-height:70px}
 .top{display:flex;gap:8px}.top input{margin:0}
 .stats{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
 .stats div{flex:1 1 90px;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:8px 12px;white-space:nowrap;text-align:center}
-.stats b{display:block;font-size:18px}
+.stats b{display:block;font-size:19px;font-weight:700}
+.stats div{font-size:13px;color:var(--mu)}
+.stats b{color:var(--tx)}
 .note{font-size:12px;color:var(--mu);margin:6px 0}
 .login{max-width:360px;margin:12vh auto;padding:0 16px}
 .err{color:var(--er);font-size:13px;margin:6px 0}
@@ -143,7 +149,7 @@ async function load(){
   members.forEach(function(m){names[m.id]=m.full_name||m.email||"Member"});
   var mine=members.find(function(m){return m.id===me.id});
   isAdmin=!!(mine&&mine.role==="admin");
-  $("who").textContent="👤 "+(names[me.id]||me.email)+" · "+(isAdmin?"Admin":"Employee");
+  $("who").textContent="👤 "+(names[me.id]||me.email)+" ("+(isAdmin?"Admin":"Employee")+")";
   var s=$("mem");
   if(isAdmin){s.style.display="block";s.innerHTML='<option value="all">All members</option>'+members.map(function(m){return'<option value="'+m.id+'"'+(m.id===viewUid?" selected":"")+'>'+esc(names[m.id])+'</option>'}).join("")}
   $("mode").textContent=isAdmin?"Admin view: you can see all members’ data.":"This is your own panel.";
@@ -299,11 +305,20 @@ async function doDist(){
 function genPw(){var c="abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789",a=new Uint32Array(10),o="";crypto.getRandomValues(a);for(var i=0;i<a.length;i++)o+=c[a[i]%c.length];return o}
 function openTeam(){
   var h='<h1>Team</h1><div class="note">Passwords are stored encrypted and cannot be viewed. If someone forgets theirs, set a new one here and tell them.</div>';
-  members.forEach(function(m){h+='<div class="card"><b>'+esc(names[m.id])+'</b> <span class="tag">'+esc(m.role||"employee")+'</span><div class="mu">'+esc(m.email||"")+'</div><div class="act"><button class="btn" data-p="'+esc(m.email||"")+'">Set new password</button></div></div>'});
+  members.forEach(function(m){h+='<div class="card"><b>'+esc(names[m.id])+'</b> <span class="tag">'+esc(m.role||"employee")+'</span><div class="mu">'+esc(m.email||"")+'</div><div class="act"><button class="btn" data-n="'+m.id+'">Edit name</button><button class="btn" data-p="'+esc(m.email||"")+'">Set new password</button></div></div>'});
   h+='<button class="btn" id="tc" style="width:100%">Close</button>';
   $("sheet").innerHTML=h;$("m").classList.add("on");
   $("tc").onclick=closeForm;
   $("sheet").onclick=async function(e){
+    var nid=e.target.dataset.n;
+    if(nid){
+      var cur=names[nid]||"";
+      var nm=prompt("Employee name",cur.indexOf("@")<0?cur:"");
+      if(!nm||!nm.trim())return;
+      var rr=await sb.rpc("admin_set_name",{target_id:nid,new_name:nm});
+      if(rr.error){alert(rr.error.message);return}
+      await load();openTeam();return;
+    }
     var em=e.target.dataset.p;if(!em)return;
     var pw=prompt("New password for "+em+" (minimum 8 characters). You can keep this suggested one or type your own:",genPw());if(!pw)return;
     var r=await sb.rpc("admin_set_password",{target_email:em,new_password:pw});
